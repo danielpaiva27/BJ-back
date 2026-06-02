@@ -1,0 +1,17 @@
+[project]
+name = "blackjack-risk-engine"
+version = "0.1.0"
+description = "Engine de analise de decisoes em blackjack usando simulacao e valor esperado."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Daniel Luna" }
+]
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
