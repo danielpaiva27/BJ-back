@@ -4,13 +4,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class Suit(str, Enum):
-    CLUBS = "clubs"
-    DIAMONDS = "diamonds"
-    HEARTS = "hearts"
-    SPADES = "spades"
-
-
 class Rank(str, Enum):
     ACE = "A"
     TWO = "2"
@@ -22,15 +15,12 @@ class Rank(str, Enum):
     EIGHT = "8"
     NINE = "9"
     TEN = "10"
-    JACK = "J"
-    QUEEN = "Q"
-    KING = "K"
 
     @property
     def hard_value(self) -> int:
         if self is Rank.ACE:
             return 1
-        if self in {Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING}:
+        if self is Rank.TEN:
             return 10
         return int(self.value)
 
@@ -38,11 +28,10 @@ class Rank(str, Enum):
 @dataclass(frozen=True, slots=True)
 class Card:
     rank: Rank
-    suit: Suit
 
     @property
     def value(self) -> int:
         return self.rank.hard_value
 
     def __str__(self) -> str:
-        return f"{self.rank.value}{self.suit.value[0].upper()}"
+        return self.rank.value
