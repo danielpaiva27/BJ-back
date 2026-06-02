@@ -20,6 +20,13 @@ aposta.
 ```text
 blackjack-risk-engine/
 |-- main.py
+|-- app/
+|   |-- __init__.py
+|   |-- main.py
+|   |-- schemas.py
+|   `-- routes/
+|       |-- __init__.py
+|       `-- analysis.py
 |-- pyproject.toml
 |-- README.md
 |-- src/
@@ -37,6 +44,7 @@ blackjack-risk-engine/
 |       |-- simulation.py
 |       `-- strategy.py
 `-- tests/
+  |-- test_api.py
     |-- test_cli.py
     |-- test_counting.py
     |-- test_dealer.py
@@ -64,27 +72,34 @@ blackjack-risk-engine/
 - `strategy.py`: estrategia basica simplificada.
 - `risk.py`: sugestao teorica de aposta por true count.
 - `main.py`: CLI; nao contem regra central da engine.
+- `app/`: camada HTTP com FastAPI; apenas validacao e roteamento.
 
 ## Como instalar e rodar
 
 Requisitos: Python 3.11+.
 
-Rodar direto no workspace:
-
-```bash
-python main.py --help
-```
-
-Opcionalmente, instalar em modo editavel:
+Instalar dependencias do projeto:
 
 ```bash
 python -m pip install -e .
+```
+
+Rodar CLI direto no workspace:
+
+```bash
+python main.py --help
 ```
 
 Rodar testes:
 
 ```bash
 python -m unittest discover -s tests -t .
+```
+
+Rodar API FastAPI:
+
+```bash
+uvicorn app.main:app --reload
 ```
 
 ## Exemplos de CLI
@@ -144,6 +159,73 @@ Exemplo abreviado:
 }
 ```
 
+## API FastAPI (Etapa 16)
+
+Endpoints disponiveis:
+
+- `GET /health`
+- `POST /analyze-hand`
+
+`GET /health` retorna:
+
+```json
+{
+  "status": "ok",
+  "service": "blackjack-risk-engine",
+  "version": "0.1.0"
+}
+```
+
+Exemplo de request para `POST /analyze-hand`:
+
+```json
+{
+  "player_hand": ["10", "6"],
+  "dealer_upcard": "10",
+  "seen_cards": ["2", "5", "6", "A", "10"],
+  "rules": {
+    "number_of_decks": 6,
+    "dealer_hits_soft_17": false,
+    "blackjack_payout": "3:2",
+    "double_allowed": true,
+    "double_after_split": true,
+    "surrender_allowed": false,
+    "max_splits": 3,
+    "dealer_peek": true
+  },
+  "simulations": 50000,
+  "seed": 42,
+  "bankroll": 1000,
+  "minimum_bet": 10,
+  "risk_profile": "moderate"
+}
+```
+
+Exemplo de chamada com `curl`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/analyze-hand" \
+  -H "Content-Type: application/json" \
+  -d '{"player_hand":["10","6"],"dealer_upcard":"10","seen_cards":["2","5","6","A","10"],"rules":{"number_of_decks":6,"dealer_hits_soft_17":false,"blackjack_payout":"3:2","double_allowed":true,"double_after_split":true,"surrender_allowed":false,"max_splits":3,"dealer_peek":true},"simulations":10000,"seed":42,"bankroll":1000,"minimum_bet":10,"risk_profile":"moderate"}'
+```
+
+Exemplo de response (abreviado):
+
+```json
+{
+  "input": {"player": ["10", "6"], "dealer": "10", "seen": ["2", "5", "6", "A", "10"]},
+  "rules": {"number_of_decks": 6, "dealer_hits_soft_17": false, "blackjack_payout": "3:2"},
+  "hand_analysis": {"total": 16, "is_soft": false},
+  "counting": {"running_count": 1, "true_count": 0.17},
+  "actions": [{"action": "hit", "ev": -0.11}],
+  "recommendation": {"best_action": "hit", "confidence": 0.41},
+  "betting": {"suggested_bet": 10.0, "risk_profile": "moderate"},
+  "metadata": {"engine_version": "0.1.0", "simulations": 10000}
+}
+```
+
+Validacao de entrada usa Pydantic. Entradas invalidas retornam erro HTTP 422.
+
 ## Conceitos
 
 Valor esperado (EV): media dos resultados simulados para uma acao. Vitorias
@@ -170,6 +252,6 @@ Hi-Lo: cartas 2-6 valem +1, 7-9 valem 0, e 10/A valem -1. O true count e
 
 ## Status para proxima etapa
 
-A engine esta preparada para ser chamada por uma API: a regra de negocio esta
-nos modulos de `src/blackjack_risk_engine`, a CLI apenas faz parsing e
-formatacao, e `analyze_hand` ja retorna JSON serializavel.
+Etapa 16 concluida: a API FastAPI foi adicionada sem mover regra de negocio
+para controllers/endpoints. A funcao central continua em
+`src/blackjack_risk_engine/ev.py` via `analyze_hand`, e o CLI permanece ativo.
