@@ -1,3 +1,14 @@
+Metadata-Version: 2.4
+Name: blackjack-risk-engine
+Version: 0.1.0
+Summary: Engine de analise de decisoes em blackjack usando simulacao e valor esperado.
+Author: Daniel Luna
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi<1.0.0,>=0.115.0
+Requires-Dist: uvicorn<1.0.0,>=0.30.0
+Requires-Dist: httpx<1.0.0,>=0.27.0
+
 # blackjack-risk-engine
 
 Engine educacional em Python para analisar decisoes em blackjack em ambiente
