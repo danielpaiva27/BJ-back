@@ -249,6 +249,18 @@ Hi-Lo: cartas 2-6 valem +1, 7-9 valem 0, e 10/A valem -1. O true count e
   mao do jogador e a carta aberta do dealer.
 - A sugestao de aposta e apenas modelo teorico de risco em unidades. Nao e
   orientacao financeira.
+- Simulacoes Monte Carlo com valores altos, como 50000 rodadas, podem aumentar
+  o tempo de processamento. Otimizacao de performance nao faz parte da etapa
+  atual.
+
+## Melhorias futuras de performance
+
+- Otimizacao do loop Monte Carlo.
+- Cache de cenarios ou subresultados recorrentes.
+- Execucao assincrona da analise.
+- Worker ou background job para simulacoes mais longas.
+- Reducao dinamica de simulacoes quando o resultado ja estiver estavel.
+- Pesquisa futura com analise exata ou programacao dinamica.
 
 ## Status para proxima etapa
 

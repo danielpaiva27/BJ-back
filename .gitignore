@@ -2,4 +2,3 @@
 uvicorn.err.log
 uvicorn.out.log
 __pycache__/
-*.py[cod]
