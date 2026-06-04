@@ -27,8 +27,12 @@ class AnalyzeHandRequest(BaseModel):
     dealer_upcard: CardValue
     seen_cards: list[CardValue] = Field(default_factory=list)
     rules: RulesPayload = Field(default_factory=RulesPayload)
+    engine_mode: Literal["legacy", "deterministic", "hybrid", "monte_carlo"] | None = None
     simulations: int = Field(default=10_000, gt=0)
     seed: int | None = None
+    max_workers: int | None = Field(default=None, gt=0)
+    monte_carlo_parallel_enabled: bool = False
+    simulation_chunk_size: int = Field(default=10_000, gt=0)
     bankroll: float = Field(default=1000.0, gt=0)
     minimum_bet: float = Field(default=10.0, gt=0)
     risk_profile: RiskProfileValue = "moderate"

@@ -50,6 +50,24 @@ class ApiTests(unittest.TestCase):
             {"input", "rules", "hand_analysis", "counting", "actions", "recommendation", "betting", "metadata"},
         )
 
+    def test_analyze_hand_accepts_optional_monte_carlo_config(self) -> None:
+        payload = self._valid_payload()
+        payload.update(
+            {
+                "player_hand": ["8", "8"],
+                "seen_cards": [],
+                "simulations": 50,
+                "monte_carlo_parallel_enabled": False,
+                "simulation_chunk_size": 10,
+                "max_workers": 2,
+            }
+        )
+
+        response = self.client.post("/analyze-hand", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("split", {action["action"] for action in response.json()["actions"]})
+
     def test_analyze_hand_returns_recommendation(self) -> None:
         response = self.client.post("/analyze-hand", json=self._valid_payload())
 

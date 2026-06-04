@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from blackjack_risk_engine.engine_core.cards import card_value, string_to_rank
+
 
 class Rank(str, Enum):
     ACE = "A"
@@ -18,11 +20,7 @@ class Rank(str, Enum):
 
     @property
     def hard_value(self) -> int:
-        if self is Rank.ACE:
-            return 1
-        if self is Rank.TEN:
-            return 10
-        return int(self.value)
+        return card_value(string_to_rank(self.value))
 
 
 @dataclass(frozen=True, slots=True)

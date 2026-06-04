@@ -2,3 +2,12 @@
 uvicorn.err.log
 uvicorn.out.log
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+.pytest_cache/
+profile.out
+benchmarks/*.out
+benchmarks/*.json
+benchmarks/*.csv

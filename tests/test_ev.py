@@ -52,6 +52,22 @@ class ExpectedValueMonteCarloTests(unittest.TestCase):
 
         self.assertEqual(first, second)
 
+    def test_stand_action_uses_deterministic_dealer_distribution(self) -> None:
+        result = analyze_action(["10", "6"], "10", [], GameRules(), "stand", 100, seed=123)
+
+        self.assertEqual(result.action, Decision.STAND)
+        self.assertEqual(result.standard_error, 0)
+        self.assertEqual(result.confidence_interval_95, (result.expected_value, result.expected_value))
+        self.assertEqual(result.wins + result.losses + result.pushes, 100)
+
+    def test_deterministic_actions_are_seed_independent(self) -> None:
+        first = analyze_hand(["10", "6"], "10", [], GameRules(), simulations=100, seed=1)
+        second = analyze_hand(["10", "6"], "10", [], GameRules(), simulations=100, seed=999)
+
+        self.assertEqual(first["actions"], second["actions"])
+        self.assertEqual(first["recommendation"], second["recommendation"])
+        self.assertEqual(first["metadata"]["analysis_method"], "deterministic_dp")
+
     def test_analyze_hand_returns_json_serializable_contract(self) -> None:
         result = analyze_hand(
             player_hand=["10", "6"],

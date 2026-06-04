@@ -3,14 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from blackjack_risk_engine.cards import Card, Rank
+from blackjack_risk_engine.cards import Card
 from blackjack_risk_engine.deck import Shoe
+from blackjack_risk_engine.engine_core.cards import hi_lo_weight, string_to_rank
 from blackjack_risk_engine.hand import CardInput, parse_cards
 from blackjack_risk_engine.rules import GameRules
-
-
-LOW_CARDS = {Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX}
-HIGH_CARDS = {Rank.TEN, Rank.ACE}
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,11 +19,7 @@ class CountAnalysis:
 
 
 def hi_lo_value(card: Card) -> int:
-    if card.rank in LOW_CARDS:
-        return 1
-    if card.rank in HIGH_CARDS:
-        return -1
-    return 0
+    return hi_lo_weight(string_to_rank(card.rank.value))
 
 
 def running_count(cards: Iterable[Card]) -> int:

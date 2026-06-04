@@ -4,21 +4,16 @@ from dataclasses import dataclass, field
 from collections.abc import Iterable
 
 from blackjack_risk_engine.cards import Card, Rank
+from blackjack_risk_engine.engine_core.cards import rank_to_string
+from blackjack_risk_engine.engine_core.adapters import card_input_to_rank, rank_to_card
+from blackjack_risk_engine.engine_core.hand import add_card_to_total, hand_values_from_ranks
 
 
 CardInput = Card | Rank | str
 
 
 def parse_card(card: CardInput) -> Card:
-    if isinstance(card, Card):
-        return card
-    if isinstance(card, Rank):
-        return Card(card)
-    try:
-        return Card(Rank(card))
-    except ValueError as error:
-        allowed = ", ".join(rank.value for rank in Rank)
-        raise ValueError(f"invalid blackjack card {card!r}; expected one of: {allowed}") from error
+    return rank_to_card(card_input_to_rank(card))
 
 
 def parse_cards(cards: Iterable[CardInput]) -> list[Card]:
@@ -28,34 +23,42 @@ def parse_cards(cards: Iterable[CardInput]) -> list[Card]:
 @dataclass(slots=True)
 class Hand:
     cards: list[Card] = field(default_factory=list)
+    _rank_indices: list[int] = field(default_factory=list, init=False, repr=False)
+    _total: int = field(default=0, init=False, repr=False)
+    _soft_aces: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.cards = parse_cards(self.cards)
+        self._rank_indices = []
+        self._total = 0
+        self._soft_aces = 0
+        for card in self.cards:
+            rank = card_input_to_rank(card)
+            self._rank_indices.append(rank)
+            self._total, self._soft_aces = add_card_to_total(self._total, self._soft_aces, rank)
 
     @classmethod
     def from_values(cls, cards: Iterable[CardInput]) -> Hand:
-        return cls(parse_cards(cards))
+        return cls(cards)
 
     def add(self, card: CardInput) -> None:
-        self.cards.append(parse_card(card))
+        parsed_card = parse_card(card)
+        rank = card_input_to_rank(parsed_card)
+        self.cards.append(parsed_card)
+        self._rank_indices.append(rank)
+        self._total, self._soft_aces = add_card_to_total(self._total, self._soft_aces, rank)
+
+    @property
+    def rank_indices(self) -> tuple[int, ...]:
+        return tuple(self._rank_indices)
 
     @property
     def values(self) -> set[int]:
-        total = sum(card.value for card in self.cards)
-        ace_count = sum(1 for card in self.cards if card.rank is Rank.ACE)
-        totals = {total}
-
-        for soft_aces in range(1, ace_count + 1):
-            totals.add(total + 10 * soft_aces)
-
-        return totals
+        return set(hand_values_from_ranks(self._rank_indices))
 
     @property
     def total(self) -> int:
-        non_bust_values = [value for value in self.values if value <= 21]
-        if non_bust_values:
-            return max(non_bust_values)
-        return min(self.values)
+        return self._total
 
     @property
     def best_value(self) -> int:
@@ -63,20 +66,19 @@ class Hand:
 
     @property
     def is_blackjack(self) -> bool:
-        return len(self.cards) == 2 and self.total == 21
+        return len(self._rank_indices) == 2 and self._total == 21
 
     @property
     def is_bust(self) -> bool:
-        return self.total > 21
+        return self._total > 21
 
     @property
     def is_soft(self) -> bool:
-        hard_total = sum(card.value for card in self.cards)
-        return any(value <= 21 and value != hard_total for value in self.values)
+        return self._soft_aces > 0
 
     @property
     def is_pair(self) -> bool:
-        return len(self.cards) == 2 and self.cards[0].rank is self.cards[1].rank
+        return len(self._rank_indices) == 2 and self._rank_indices[0] == self._rank_indices[1]
 
     @property
     def can_split(self) -> bool:
@@ -84,7 +86,7 @@ class Hand:
 
     @property
     def card_values(self) -> list[str]:
-        return [card.rank.value for card in self.cards]
+        return [rank_to_string(rank) for rank in self._rank_indices]
 
     def __str__(self) -> str:
         return " ".join(str(card) for card in self.cards) or "<empty>"
