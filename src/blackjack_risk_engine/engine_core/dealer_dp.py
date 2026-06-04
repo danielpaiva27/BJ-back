@@ -111,6 +111,22 @@ def natural_blackjack_stand_ev(
     )
 
 
+def dealer_natural_blackjack_probability(
+    dealer_upcard_rank: RankIndex,
+    deck_counts: tuple[int, ...],
+) -> float:
+    counts = _validate_deck_counts(deck_counts)
+    remaining = sum(counts)
+    if remaining <= 0:
+        raise ValueError("deck_counts must contain at least one card for the dealer hole card")
+
+    if dealer_upcard_rank == 0:
+        return counts[9] / remaining
+    if dealer_upcard_rank == 9:
+        return counts[0] / remaining
+    return 0.0
+
+
 def dealer_distribution_cache_info() -> object:
     return _cached_dealer_distribution.cache_info()
 

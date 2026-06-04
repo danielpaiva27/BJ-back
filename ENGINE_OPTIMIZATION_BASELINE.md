@@ -574,3 +574,47 @@ Contrato da API e rollout:
 - `engine_mode` permanece opcional no request.
 - Ausencia de `engine_mode` no payload continua usando `ENGINE_MODE`, com fallback para `hybrid`.
 - O payload principal usado pelo frontend foi preservado; apenas metadata adicional foi expandida.
+
+## Etapa 20.7 - Auditoria maxima de precisao
+
+Foi criado `ENGINE_ACCURACY_AUDIT.md` com a auditoria matematica da engine apos as otimizacoes.
+
+Escopo validado:
+
+- avaliacao hard/soft/bust/blackjack natural;
+- regras do dealer, incluindo hard 17 e soft 17 conforme `dealer_hits_soft_17`;
+- invariantes da distribuicao do dealer;
+- EV de `stand`, `hit`, `double` e `surrender`;
+- blackjack natural, incluindo push contra natural do dealer;
+- composicao alterada do shoe;
+- ranking de acoes e sanidade contra `NaN`/`Infinity`;
+- comparacao dos modos `deterministic`, `hybrid`, `monte_carlo` e `legacy`.
+
+Foram adicionados testes em `tests/test_engine_accuracy.py`, incluindo oraculos independentes pequenos para dealer DP, Stand, Hit e Double em decks sinteticos.
+
+Correcoes de precisao feitas:
+
+- 21 nao natural agora perde para blackjack natural do dealer no caminho deterministico.
+- Double contra blackjack natural do dealer agora segue o fluxo existente: dealer natural encerra antes da acao e perde uma unidade, nao duas.
+
+Scripts:
+
+```powershell
+python benchmarks/compare_engine_modes.py
+python benchmarks/compare_engine_accuracy.py
+```
+
+Resultado final desta etapa:
+
+```text
+170 passed, 1 warning
+```
+
+O warning remanescente e de `fastapi.testclient`/Starlette e nao afeta a engine.
+
+Limitacoes documentadas para etapa futura:
+
+- DP completa de `split`;
+- regras avancadas de split (`double_after_split`, `hit_split_aces`, `resplit_aces`);
+- modelagem formal de `dealer_peek=False`;
+- alinhamento opcional da politica de continuacao do Monte Carlo com a continuacao otima da DP.

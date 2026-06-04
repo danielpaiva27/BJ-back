@@ -6,6 +6,7 @@ from typing import Iterable, NamedTuple
 
 from blackjack_risk_engine.engine_core.cards import RANK_STRINGS, RankIndex
 from blackjack_risk_engine.engine_core.dealer_dp import (
+    dealer_natural_blackjack_probability,
     dealer_outcome_distribution,
     natural_blackjack_stand_ev,
     stand_ev_from_distribution,
@@ -151,7 +152,17 @@ class ActionEvCalculator:
 
             weighted = _add_weighted_stats(weighted, branch, count / remaining_cards)
 
-        return weighted
+        dealer_natural_probability = dealer_natural_blackjack_probability(dealer_upcard_rank, counts)
+        if not dealer_natural_probability:
+            return weighted
+
+        return OutcomeStats(
+            expected_value=weighted.expected_value + dealer_natural_probability,
+            win_rate=weighted.win_rate,
+            lose_rate=weighted.lose_rate,
+            push_rate=weighted.push_rate,
+            second_moment=weighted.second_moment - 3.0 * dealer_natural_probability,
+        )
 
     def ev_surrender(self) -> OutcomeStats:
         if not self.rules.surrender_allowed:
@@ -199,6 +210,23 @@ def ev_stand(
         dealer_hits_soft_17=rules.dealer_hits_soft_17,
     )
     stand = stand_ev_from_distribution(player_total, distribution)
+    if player_total == 21:
+        dealer_natural_probability = min(
+            stand.push_rate,
+            dealer_natural_blackjack_probability(dealer_upcard_rank, deck_counts),
+        )
+        if dealer_natural_probability:
+            lose_rate = stand.lose_rate + dealer_natural_probability
+            push_rate = stand.push_rate - dealer_natural_probability
+            expected_value = stand.win_rate - lose_rate
+            second_moment = stand.win_rate + lose_rate
+            return OutcomeStats(
+                expected_value=expected_value,
+                win_rate=stand.win_rate,
+                lose_rate=lose_rate,
+                push_rate=push_rate,
+                second_moment=second_moment,
+            )
     return OutcomeStats(
         expected_value=stand.expected_value,
         win_rate=stand.win_rate,

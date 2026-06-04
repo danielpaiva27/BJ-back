@@ -19,9 +19,9 @@ class EngineRegressionBaselineTests(unittest.TestCase):
                 "seed": 101,
                 "best_action": "hit",
                 "actions": [
-                    ("hit", -0.5675916930509228, 5, 23, 2),
+                    ("hit", -0.5733347015623003, 5, 23, 2),
                     ("stand", -0.5784065991336804, 6, 24, 0),
-                    ("double", -1.1351833861018457, 5, 23, 2),
+                    ("double", -1.0710115083877585, 5, 23, 2),
                 ],
             },
             {
@@ -59,9 +59,9 @@ class EngineRegressionBaselineTests(unittest.TestCase):
                 "best_action": "split",
                 "actions": [
                     ("split", -0.4666666666666667, 9, 17, 4),
-                    ("hit", -0.5653973011785047, 6, 22, 2),
+                    ("hit", -0.5714495014054622, 5, 23, 2),
                     ("stand", -0.5728258585202568, 6, 24, 0),
-                    ("double", -1.1307946023570095, 6, 22, 2),
+                    ("double", -1.0652290998983032, 5, 23, 2),
                 ],
             },
             {

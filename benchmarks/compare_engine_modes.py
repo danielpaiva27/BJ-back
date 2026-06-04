@@ -90,6 +90,30 @@ SCENARIOS = (
         seen_cards=[],
         seed=60_500,
     ),
+    CompareScenario(
+        name="F",
+        label="hard 12 vs dealer 2",
+        player_hand=["10", "2"],
+        dealer_upcard="2",
+        seen_cards=[],
+        seed=60_600,
+    ),
+    CompareScenario(
+        name="G",
+        label="hard 20 vs dealer 10",
+        player_hand=["10", "10"],
+        dealer_upcard="10",
+        seen_cards=[],
+        seed=60_700,
+    ),
+    CompareScenario(
+        name="H",
+        label="hard 9 vs dealer 3",
+        player_hand=["4", "5"],
+        dealer_upcard="3",
+        seen_cards=[],
+        seed=60_800,
+    ),
 )
 
 
