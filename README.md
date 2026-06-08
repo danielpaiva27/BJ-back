@@ -165,6 +165,7 @@ Endpoints disponiveis:
 
 - `GET /health`
 - `POST /analyze-hand`
+- `POST /pre-round-analysis`
 
 `GET /health` retorna:
 
@@ -225,6 +226,89 @@ Exemplo de response (abreviado):
 ```
 
 Validacao de entrada usa Pydantic. Entradas invalidas retornam erro HTTP 422.
+
+### Analise pre-rodada multi-sistema
+
+`POST /pre-round-analysis` estima a favorabilidade do shoe antes da mao usando
+Hi-Lo, Hi-Opt II e Wong Halves. A resposta combina contagem, betting true
+count, vantagem estimada e exposicao simulada limitada pela banca.
+
+Documentacao tecnica completa:
+
+- [`PRE_ROUND_COUNTING_SYSTEMS.md`](PRE_ROUND_COUNTING_SYSTEMS.md)
+- [`PRE_ROUND_ANALYSIS_AUDIT.md`](PRE_ROUND_ANALYSIS_AUDIT.md)
+
+O frontend consome este endpoint manualmente e renderiza um card por sistema.
+A politica de banca e unica, sem perfis de risco. A decisao durante a mao
+continua independente e usa a composicao real do shoe para calcular EV por
+acao.
+
+Exemplo de request:
+
+```json
+{
+  "number_of_decks": 6,
+  "seen_cards": ["2", "5", "10", "A"],
+  "bankroll": 1000,
+  "minimum_bet": 10,
+  "rules": {
+    "dealer_hits_soft_17": false,
+    "blackjack_payout": "3:2",
+    "double_after_split": true,
+    "surrender_allowed": false,
+    "dealer_peek": true
+  },
+  "systems": ["hi_lo", "hi_opt_ii", "wong_halves"]
+}
+```
+
+Exemplo resumido de response:
+
+```json
+{
+  "cards_seen": 4,
+  "cards_remaining": 308,
+  "decks_remaining": 5.9230769231,
+  "bankroll": 1000,
+  "minimum_bet": 10,
+  "policy": {
+    "policy_id": "risk_capped_growth",
+    "policy_label": "Crescimento com risco de quebra limitado",
+    "variance_per_unit": 1.3,
+    "risk_of_ruin_limit": 0.05,
+    "max_single_round_exposure": 0.05,
+    "max_bankroll_exposure": 0.05,
+    "risk_model": "approx_exponential_gambler_ruin"
+  },
+  "systems": [
+    {
+      "system_id": "hi_lo",
+      "running_count": 0,
+      "true_count": 0,
+      "betting_true_count": 0,
+      "estimated_player_edge": -0.004,
+      "suggested_units": 0,
+      "estimated_risk_of_ruin": 0,
+      "risk_of_ruin_limit": 0.05,
+      "recommendation_status": "observe"
+    }
+  ],
+  "most_favorable_estimate_system_id": "hi_lo"
+}
+```
+
+- Hi-Lo usa o true count diretamente para a estimativa de aposta.
+- Hi-Opt II separa playing count e betting count, ajustando este ultimo pelo
+  side count de ases.
+- Wong Halves preserva a contagem inteira escalada por 2 para auditoria.
+
+A analise pre-rodada nao substitui a engine de decisao da mao. Hit, stand,
+double, split e surrender continuam sendo avaliados pela engine probabilistica
+baseada na composicao real do shoe.
+
+Nao ha perfis conservador, moderado ou agressivo neste endpoint. A politica e
+unica e busca vantagem estimada positiva com exposicao limitada pela banca
+simulada.
 
 ## Conceitos
 

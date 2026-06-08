@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from blackjack_risk_engine import __version__
 
 from app.routes.analysis import router as analysis_router
+from app.routes.pre_round import router as pre_round_router
 
 
 app = FastAPI(
@@ -25,3 +26,4 @@ app.add_middleware(
 )
 
 app.include_router(analysis_router)
+app.include_router(pre_round_router)
