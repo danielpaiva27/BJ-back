@@ -1,3 +1,5 @@
+import json
+import math
 import unittest
 
 from fastapi.testclient import TestClient
@@ -30,6 +32,19 @@ class ApiTests(unittest.TestCase):
             "minimum_bet": 10,
             "risk_profile": "moderate",
         }
+
+    def _seen_cards_with_high_dealer_natural_pressure(self) -> list[str]:
+        return [
+            *(["2"] * 4),
+            *(["3"] * 4),
+            *(["4"] * 4),
+            *(["5"] * 3),
+            *(["6"] * 3),
+            *(["7"] * 4),
+            *(["8"] * 4),
+            *(["9"] * 4),
+            *(["10"] * 14),
+        ]
 
     def test_health_returns_200(self) -> None:
         response = self.client.get("/health")
@@ -101,6 +116,73 @@ class ApiTests(unittest.TestCase):
         response = self.client.post("/analyze-hand", json=invalid_payload)
 
         self.assertEqual(response.status_code, 422)
+
+    def test_analyze_hand_invalid_engine_mode_returns_422(self) -> None:
+        invalid_payload = self._valid_payload()
+        invalid_payload["engine_mode"] = "banana"
+
+        response = self.client.post("/analyze-hand", json=invalid_payload)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("engine_mode", response.text)
+
+    def test_analyze_hand_double_vs_dealer_natural_keeps_values_finite(self) -> None:
+        payload = self._valid_payload()
+        payload.update(
+            {
+                "player_hand": ["5", "6"],
+                "dealer_upcard": "10",
+                "seen_cards": self._seen_cards_with_high_dealer_natural_pressure(),
+                "engine_mode": "deterministic",
+                "simulations": 80,
+                "seed": 99,
+            }
+        )
+        payload["rules"]["number_of_decks"] = 1
+
+        response = self.client.post("/analyze-hand", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        actions = {action["action"]: action for action in data["actions"]}
+
+        self.assertIn("double", actions)
+        self.assertEqual(data["metadata"]["analysis_method"], "deterministic_dp")
+        self.assertGreater(actions["double"]["ev"], -2.0)
+
+        serialized = json.dumps(data).lower()
+        self.assertNotIn("nan", serialized)
+        self.assertNotIn("infinity", serialized)
+
+        for field in ("ev", "win_rate", "lose_rate", "push_rate", "std_dev"):
+            self.assertTrue(math.isfinite(actions["double"][field]))
+
+    def test_analyze_hand_response_keeps_numeric_outputs_finite(self) -> None:
+        response = self.client.post("/analyze-hand", json=self._valid_payload())
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        serialized = json.dumps(payload).lower()
+        self.assertNotIn("nan", serialized)
+        self.assertNotIn("infinity", serialized)
+
+        self.assertTrue(math.isfinite(payload["counting"]["true_count"]))
+        self.assertGreaterEqual(payload["counting"]["cards_remaining"], 0)
+
+        for action in payload["actions"]:
+            for field in (
+                "ev",
+                "win_rate",
+                "lose_rate",
+                "push_rate",
+                "std_dev",
+                "standard_error",
+            ):
+                self.assertTrue(math.isfinite(action[field]), f"{field} should be finite")
+
+            low, high = action["confidence_interval_95"]
+            self.assertTrue(math.isfinite(low))
+            self.assertTrue(math.isfinite(high))
 
 
 if __name__ == "__main__":

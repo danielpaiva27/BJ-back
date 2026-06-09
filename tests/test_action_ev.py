@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from blackjack_risk_engine.engine_core.action_ev import (
@@ -73,6 +74,22 @@ class ActionEvTests(unittest.TestCase):
 
         self.assertGreaterEqual(result.std_dev, 0)
         self.assertGreaterEqual(result.second_moment, result.expected_value * result.expected_value)
+
+    def test_double_ev_accounts_for_dealer_natural_before_double_multiplier(self) -> None:
+        result = ev_double(
+            player_total=11,
+            soft_aces=0,
+            dealer_upcard_rank=string_to_rank("10"),
+            deck_counts=counts_from_cards(["A", "A", "A"]),
+            rules=CoreRules(),
+        )
+
+        self.assertAlmostEqual(result.expected_value, -1.0)
+        self.assertGreater(result.expected_value, -2.0)
+        self.assertEqual(result.lose_rate, 1.0)
+        self.assertAlmostEqual(result.second_moment, 1.0)
+        self.assertTrue(math.isfinite(result.expected_value))
+        self.assertTrue(math.isfinite(result.std_dev))
 
     def test_surrender_ev_is_minus_half_when_allowed(self) -> None:
         result = ev_surrender(CoreRules(surrender_allowed=True))

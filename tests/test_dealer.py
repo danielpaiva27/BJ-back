@@ -73,6 +73,16 @@ class DealerPolicyTests(unittest.TestCase):
         self.assertTrue(result.is_soft)
         self.assertEqual([str(card) for card in result.drawn_cards], ["2"])
 
+    def test_dealer_hits_soft_17_and_converts_to_hard_17_with_ten(self) -> None:
+        deck = ControlledDeck.from_values(["6", "10"])
+
+        result = play_dealer_hand("A", deck, GameRules(dealer_hits_soft_17=True))
+
+        self.assertEqual(result.cards, ["A", "6", "10"])
+        self.assertEqual(result.total, 17)
+        self.assertFalse(result.is_soft)
+        self.assertEqual([str(card) for card in result.drawn_cards], ["10"])
+
     def test_dealer_busts_correctly(self) -> None:
         deck = ControlledDeck.from_values(["6", "10"])
 

@@ -288,6 +288,24 @@ class HandAccuracyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid blackjack card"):
             Hand.from_values(["A", "10", "0"])
 
+    def test_soft_hand_specific_cases_from_stage_22_10(self) -> None:
+        cases = (
+            (["A", "6"], 17, True),
+            (["A", "6", "10"], 17, False),
+            (["A", "7"], 18, True),
+            (["A", "7", "10"], 18, False),
+            (["A", "9"], 20, True),
+            (["A", "9", "A"], 21, True),
+        )
+
+        for cards, total, is_soft in cases:
+            with self.subTest(cards=cards):
+                evaluation = evaluate_hand_from_ranks(ranks(cards))
+
+                self.assertEqual(evaluation.total, total)
+                self.assertEqual(evaluation.is_soft, is_soft)
+                self.assertFalse(evaluation.is_blackjack)
+
 
 class DealerDpAccuracyTests(unittest.TestCase):
     def test_dealer_soft_17_rule_matches_independent_oracle(self) -> None:
@@ -422,6 +440,37 @@ class ActionEvAccuracyTests(unittest.TestCase):
         self.assertGreaterEqual(result.expected_value, -1.0)
         self.assertLessEqual(result.expected_value, 1.0)
 
+    def test_soft_hand_scenarios_return_finite_action_values(self) -> None:
+        scenarios = (
+            (["A", "6"], "10"),
+            (["A", "7"], "10"),
+            (["A", "9"], "10"),
+            (["A", "9", "A"], "10"),
+        )
+
+        for player_hand, dealer_upcard in scenarios:
+            with self.subTest(player_hand=player_hand, dealer_upcard=dealer_upcard):
+                result = analyze_hand(
+                    player_hand,
+                    dealer_upcard,
+                    [],
+                    GameRules(surrender_allowed=True),
+                    simulations=80,
+                    seed=96,
+                    engine_mode="deterministic",
+                )
+
+                for action in result["actions"]:
+                    self.assertTrue(math.isfinite(action["ev"]))
+                    self.assertTrue(math.isfinite(action["win_rate"]))
+                    self.assertTrue(math.isfinite(action["lose_rate"]))
+                    self.assertTrue(math.isfinite(action["push_rate"]))
+                    self.assertTrue(math.isfinite(action["std_dev"]))
+
+                if player_hand == ["A", "9", "A"]:
+                    self.assertEqual(result["hand_analysis"]["total"], 21)
+                    self.assertFalse(result["hand_analysis"]["is_blackjack"])
+
 
 class BlackjackNaturalAccuracyTests(unittest.TestCase):
     def test_natural_blackjack_payout_and_push_probability(self) -> None:
@@ -452,6 +501,46 @@ class BlackjackNaturalAccuracyTests(unittest.TestCase):
         self.assertEqual([action["action"] for action in result["actions"]], ["stand"])
         self.assertEqual(result["recommendation"]["best_action"], "stand")
         self.assertEqual(result["actions"][0]["ev"], 1.5)
+
+    def test_natural_blackjack_respects_3_to_2_and_6_to_5_rules(self) -> None:
+        three_to_two = analyze_hand(
+            ["A", "10"],
+            "9",
+            [],
+            GameRules(blackjack_payout="3:2"),
+            simulations=80,
+            seed=501,
+            engine_mode="deterministic",
+        )
+        six_to_five = analyze_hand(
+            ["A", "10"],
+            "9",
+            [],
+            GameRules(blackjack_payout="6:5"),
+            simulations=80,
+            seed=501,
+            engine_mode="deterministic",
+        )
+
+        self.assertAlmostEqual(three_to_two["actions"][0]["ev"], 1.5)
+        self.assertAlmostEqual(six_to_five["actions"][0]["ev"], 1.2)
+
+    def test_non_natural_21_does_not_receive_blackjack_payout(self) -> None:
+        result = analyze_hand(
+            ["7", "7", "7"],
+            "9",
+            [],
+            GameRules(blackjack_payout="3:2"),
+            simulations=80,
+            seed=502,
+            engine_mode="deterministic",
+        )
+
+        stand_ev = action_evs_by_name(result)["stand"]
+        self.assertEqual(result["hand_analysis"]["total"], 21)
+        self.assertFalse(result["hand_analysis"]["is_blackjack"])
+        self.assertLessEqual(stand_ev, 1.0)
+        self.assertNotEqual(stand_ev, 1.5)
 
 
 class ShoeCompositionAndRankingAccuracyTests(unittest.TestCase):

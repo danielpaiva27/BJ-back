@@ -105,6 +105,16 @@ class RoundSimulationTests(unittest.TestCase):
 
         self.assertEqual(result.outcome, -1)
 
+    def test_double_against_dealer_natural_loses_one_unit_before_player_draw(self) -> None:
+        deck = ControlledDeck.from_values(["A", "5"])
+
+        result = simulate_round(["5", "6"], "10", deck, GameRules(), "double")
+
+        self.assertEqual(result.player_hand.card_values, ["5", "6"])
+        self.assertEqual(result.dealer_hand.card_values, ["10", "A"])
+        self.assertEqual(result.outcome, -1)
+        self.assertEqual([str(card) for card in deck.cards], ["5"])
+
     def test_double_win_is_worth_two_units(self) -> None:
         deck = ControlledDeck.from_values(["7", "5"])
 
@@ -172,6 +182,20 @@ class RoundSimulationTests(unittest.TestCase):
         self.assertEqual(result.player_hand.card_values, ["10", "6"])
         self.assertEqual(result.dealer_hand.card_values, ["10", "10"])
         self.assertEqual(result.outcome, -0.5)
+
+    def test_surrender_ends_hand_without_triggering_dealer_draws(self) -> None:
+        deck = ControlledDeck.from_values(["10", "2", "3"])
+        cards_before = len(deck.cards)
+
+        result = simulate_round(["10", "6"], "10", deck, GameRules(surrender_allowed=True), "surrender")
+
+        self.assertEqual(result.action.value, "surrender")
+        self.assertEqual(result.outcome, -0.5)
+        self.assertEqual(result.dealer_hand.card_values, ["10", "10"])
+        self.assertEqual(result.dealer_result.drawn_cards, ())
+        self.assertEqual(result.dealer_result.final_hand.card_values, ["10", "10"])
+        self.assertEqual(len(deck.cards), cards_before - 1)
+        self.assertEqual([str(card) for card in deck.cards], ["2", "3"])
 
     def test_surrender_is_rejected_when_rule_disallows_it(self) -> None:
         deck = ControlledDeck.from_values(["10"])

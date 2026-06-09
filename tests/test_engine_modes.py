@@ -1,3 +1,4 @@
+import math
 import os
 import unittest
 from unittest.mock import patch
@@ -86,6 +87,24 @@ class EngineModeTests(unittest.TestCase):
                 seed=15,
                 engine_mode="deterministic",
             )
+
+    def test_hybrid_split_fallback_returns_finite_split_metrics(self) -> None:
+        result = analyze_hand(
+            ["8", "8"],
+            "10",
+            [],
+            GameRules(),
+            simulations=80,
+            seed=17,
+            engine_mode="hybrid",
+        )
+
+        self.assertEqual(result["metadata"]["analysis_method"], "deterministic_dp_with_monte_carlo_fallback")
+        self.assertEqual(result["metadata"]["monte_carlo_fallback_actions"], ["split"])
+
+        split_action = next(action for action in result["actions"] if action["action"] == "split")
+        for field in ("ev", "win_rate", "lose_rate", "push_rate", "std_dev", "standard_error"):
+            self.assertTrue(math.isfinite(split_action[field]))
 
 
 class EngineModeApiTests(unittest.TestCase):

@@ -43,8 +43,10 @@ _STATUS_TEXT = {
         "dentro do limite aproximado de risco de quebra."
     ),
     "positive_edge_minimum_bet_exceeds_risk_cap": (
-        "Ha vantagem estimada, mas a menor aposta possivel ultrapassa o "
-        "limite aproximado de risco de quebra de 5% para a banca atual."
+        "Ha vantagem estimada positiva, mas a menor aposta possivel "
+        "(unidade minima) excede a exposicao permitida pelo limite "
+        "aproximado de risco de quebra para a banca atual. A politica "
+        "sugere observar ou usar uma banca maior para essa unidade."
     ),
     "minimum_unit": (
         "Ha vantagem estimada positiva. A politica sugere a unidade minima "
