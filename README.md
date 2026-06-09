@@ -166,6 +166,7 @@ Endpoints disponiveis:
 - `GET /health`
 - `POST /analyze-hand`
 - `POST /pre-round-analysis`
+- `POST /pre-round-analysis/machine-ev`
 
 `GET /health` retorna:
 
@@ -243,72 +244,36 @@ A politica de banca e unica, sem perfis de risco. A decisao durante a mao
 continua independente e usa a composicao real do shoe para calcular EV por
 acao.
 
-Exemplo de request:
+### Machine EV pre-rodada
 
-```json
-{
-  "number_of_decks": 6,
-  "seen_cards": ["2", "5", "10", "A"],
-  "bankroll": 1000,
-  "minimum_bet": 10,
-  "rules": {
-    "dealer_hits_soft_17": false,
-    "blackjack_payout": "3:2",
-    "double_after_split": true,
-    "surrender_allowed": false,
-    "dealer_peek": true
-  },
-  "systems": ["hi_lo", "hi_opt_ii", "wong_halves"]
-}
-```
+`POST /pre-round-analysis/machine-ev` expoe a Machine EV em endpoint dedicado,
+separado de `POST /pre-round-analysis`.
 
-Exemplo resumido de response:
+Ela nao e quarto sistema humano e nao retorna `suggested_units` ou
+`suggested_amount`. O contrato publico e focado em:
 
-```json
-{
-  "cards_seen": 4,
-  "cards_remaining": 308,
-  "decks_remaining": 5.9230769231,
-  "bankroll": 1000,
-  "minimum_bet": 10,
-  "policy": {
-    "policy_id": "risk_capped_growth",
-    "policy_label": "Crescimento com risco de quebra limitado",
-    "variance_per_unit": 1.3,
-    "risk_of_ruin_limit": 0.05,
-    "max_single_round_exposure": 0.05,
-    "max_bankroll_exposure": 0.05,
-    "risk_model": "approx_exponential_gambler_ruin"
-  },
-  "systems": [
-    {
-      "system_id": "hi_lo",
-      "running_count": 0,
-      "true_count": 0,
-      "betting_true_count": 0,
-      "estimated_player_edge": -0.004,
-      "suggested_units": 0,
-      "estimated_risk_of_ruin": 0,
-      "risk_of_ruin_limit": 0.05,
-      "recommendation_status": "observe"
-    }
-  ],
-  "most_favorable_estimate_system_id": "hi_lo"
-}
-```
+- `estimated_next_hand_edge`;
+- `risk_if_minimum_bet`;
+- `minimum_bankroll_required_for_minimum_bet`;
+- status e texto diagnostico.
 
-- Hi-Lo usa o true count diretamente para a estimativa de aposta.
-- Hi-Opt II separa playing count e betting count, ajustando este ultimo pelo
-  side count de ases.
-- Wong Halves preserva a contagem inteira escalada por 2 para auditoria.
+`debug_metrics` e opcional para engenharia (`include_debug_metrics=true`) e nao
+e foco de UI.
 
-A analise pre-rodada nao substitui a engine de decisao da mao. Hit, stand,
-double, split e surrender continuam sendo avaliados pela engine probabilistica
-baseada na composicao real do shoe.
+### Machine EV documentation
 
-Nao ha perfis conservador, moderado ou agressivo neste endpoint. A politica e
-unica e busca vantagem estimada positiva com exposicao limitada pela banca
-simulada.
+Documentacao principal:
+
+- [`MACHINE_EV_FEATURE_SUMMARY.md`](MACHINE_EV_FEATURE_SUMMARY.md)
+- [`MACHINE_EV_PRE_ROUND.md`](MACHINE_EV_PRE_ROUND.md)
+- [`MACHINE_EV_COMPARISON.md`](MACHINE_EV_COMPARISON.md)
+- [`MACHINE_EV_ACCURACY_AUDIT.md`](MACHINE_EV_ACCURACY_AUDIT.md)
+
+Scripts relacionados:
+
+- `benchmarks/compare_machine_ev_vs_counting_systems.py`
+- `benchmarks/audit_machine_ev_accuracy.py`
+- `benchmarks/benchmark_machine_ev.py`
 
 ## Conceitos
 

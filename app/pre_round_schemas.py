@@ -136,3 +136,52 @@ class PreRoundAnalysisResponse(BaseModel):
     policy: BankrollPolicyResponse
     systems: list[PreRoundSystemResult] = Field(min_length=1)
     most_favorable_estimate_system_id: CountSystemId
+
+
+class MachineEvPreRoundRequest(BaseModel):
+    number_of_decks: int = Field(gt=0, strict=True)
+    seen_cards: list[CardValue] = Field(default_factory=list)
+    bankroll: FiniteFloat | None = None
+    minimum_bet: FiniteFloat | None = Field(default=None, gt=0)
+    rules: PreRoundRulesPayload | None = None
+    engine_mode: Literal[
+        "legacy",
+        "deterministic",
+        "hybrid",
+        "monte_carlo",
+    ] | None = None
+    include_debug_metrics: bool = False
+    max_duration_ms: int | None = Field(default=None, gt=0, strict=True)
+
+    @field_validator("seen_cards", mode="before")
+    @classmethod
+    def normalize_seen_cards(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return [str(card).strip().upper() for card in value]
+
+
+class MachineEvDebugMetricsResponse(BaseModel):
+    states_evaluated: int = Field(ge=0)
+    duration_ms: FiniteFloat = Field(ge=0)
+    cache_hits: int = Field(ge=0)
+    cache_misses: int = Field(ge=0)
+    timed_out: bool
+    warnings: list[str]
+    precision_mode: str
+
+
+class MachineEvPreRoundResponse(BaseModel):
+    model_id: Literal["machine_ev"]
+    label: Literal["Machine EV"]
+    model_type: Literal["composition_ev"]
+    is_human_replicable: Literal[False]
+    estimated_next_hand_edge: FiniteFloat
+    risk_if_minimum_bet: FiniteFloat | None = Field(default=None, ge=0, le=1)
+    minimum_bankroll_required_for_minimum_bet: FiniteFloat | None = Field(
+        default=None,
+        ge=0,
+    )
+    recommendation_status: str
+    recommendation_text: str
+    debug_metrics: MachineEvDebugMetricsResponse | None = None

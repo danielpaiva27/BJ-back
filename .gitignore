@@ -11,3 +11,4 @@ profile.out
 benchmarks/*.out
 benchmarks/*.json
 benchmarks/*.csv
+benchmarks/output/
