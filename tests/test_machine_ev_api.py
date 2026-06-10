@@ -44,7 +44,7 @@ def _fake_result(
     warnings = (
         (
             "Machine EV exceeded configured duration budget; "
-            "result remains exact but may be slow."
+            "observable-state enumeration completed, but the result may be slow."
         ),
     ) if timed_out else ()
     return MachineEvResult(

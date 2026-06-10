@@ -53,6 +53,7 @@ def _near_consumed_seen_cards() -> tuple[str, ...]:
 
 SCENARIOS = (
     BenchmarkScenario("neutral_6_decks", 6, ()),
+    BenchmarkScenario("neutral_8_decks", 8, ()),
     BenchmarkScenario(
         "low_cards_removed",
         6,

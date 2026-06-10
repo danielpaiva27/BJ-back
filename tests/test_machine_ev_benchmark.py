@@ -15,8 +15,6 @@ SCRIPT_PATH = (
     / "benchmarks"
     / "compare_machine_ev_vs_counting_systems.py"
 )
-
-
 @pytest.fixture(scope="module")
 def comparator() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
@@ -32,11 +30,11 @@ def comparator() -> ModuleType:
 
 
 @pytest.fixture(scope="module")
-def neutral_result(comparator: ModuleType) -> dict[str, object]:
+def smoke_result(comparator: ModuleType) -> dict[str, object]:
     scenario = next(
         scenario
         for scenario in comparator.SCENARIOS
-        if scenario.scenario_id == "neutral_6_decks"
+        if scenario.scenario_id == comparator.SMOKE_SCENARIO_IDS[0]
     )
     return comparator.run_scenario(scenario)
 
@@ -110,15 +108,15 @@ def test_required_scenarios_are_defined_and_valid(
 
 
 def test_smoke_scenario_returns_finite_separated_results(
-    neutral_result: dict[str, object],
+    smoke_result: dict[str, object],
 ) -> None:
-    assert all(math.isfinite(value) for value in _numeric_values(neutral_result))
-    assert "counting_systems" in neutral_result
-    assert "machine_ev" in neutral_result
-    assert "systems" not in neutral_result
+    assert all(math.isfinite(value) for value in _numeric_values(smoke_result))
+    assert "counting_systems" in smoke_result
+    assert "machine_ev" in smoke_result
+    assert "systems" not in smoke_result
 
-    counting_systems = neutral_result["counting_systems"]
-    machine_ev = neutral_result["machine_ev"]
+    counting_systems = smoke_result["counting_systems"]
+    machine_ev = smoke_result["machine_ev"]
     assert isinstance(counting_systems, dict)
     assert isinstance(machine_ev, dict)
     assert set(counting_systems) == {
@@ -129,7 +127,7 @@ def test_smoke_scenario_returns_finite_separated_results(
     assert machine_ev["model_id"] == "machine_ev"
     assert machine_ev["is_human_replicable"] is False
     assert math.isfinite(machine_ev["estimated_next_hand_edge"])
-    assert neutral_result["alignment"] in {
+    assert smoke_result["alignment"] in {
         "aligned_positive",
         "aligned_negative",
         "count_positive_machine_negative",
@@ -200,17 +198,17 @@ def test_benchmark_uses_direct_internal_functions_without_http(
 
 
 def test_result_does_not_reveal_dealer_hole_card(
-    neutral_result: dict[str, object],
+    smoke_result: dict[str, object],
 ) -> None:
-    assert "dealer_hole_card" not in set(_all_keys(neutral_result))
+    assert "dealer_hole_card" not in set(_all_keys(smoke_result))
 
 
 def test_output_language_avoids_prohibited_claims(
     comparator: ModuleType,
-    neutral_result: dict[str, object],
+    smoke_result: dict[str, object],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    comparator.print_report([neutral_result])
+    comparator.print_report([smoke_result])
     output = capsys.readouterr().out.lower()
 
     for prohibited in (
@@ -228,7 +226,7 @@ def test_output_language_avoids_prohibited_claims(
 
 def test_cli_smoke_path_is_callable_without_writing_output(
     comparator: ModuleType,
-    neutral_result: dict[str, object],
+    smoke_result: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -239,7 +237,7 @@ def test_cli_smoke_path_is_callable_without_writing_output(
             scenario.scenario_id
             for scenario in scenarios
         )
-        return [neutral_result]
+        return [smoke_result]
 
     monkeypatch.setattr(comparator, "run_scenarios", fake_run)
 
@@ -250,12 +248,12 @@ def test_cli_smoke_path_is_callable_without_writing_output(
 
 def test_optional_json_output_writes_only_when_called(
     comparator: ModuleType,
-    neutral_result: dict[str, object],
+    smoke_result: dict[str, object],
     tmp_path: Path,
 ) -> None:
     output_path = tmp_path / "machine_ev_vs_counts.json"
 
-    written = comparator.write_output([neutral_result], output_path)
+    written = comparator.write_output([smoke_result], output_path)
 
     assert written == output_path
     assert output_path.exists()

@@ -31,7 +31,7 @@ def test_machine_ev_config_defaults() -> None:
     assert config.risk_of_ruin_limit == 0.05
     assert config.variance_per_unit_fallback == 1.3
     assert config.precision_mode == (
-        "exact_observable_initial_states_with_hybrid_decision"
+        "exact_observable_initial_states_with_deterministic_public_actions"
     )
 
 

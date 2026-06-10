@@ -46,6 +46,19 @@ Cada estado observavel e convertido para estado da engine atual. A Machine EV
 nao cria uma segunda estrategia de blackjack; ela reutiliza o motor existente
 para avaliar a melhor acao por estado.
 
+No caminho publico padrao, `stand`, `double` e `surrender` usam avaliacao
+deterministica. `hit` usa uma aproximacao deterministica por composicao, com
+probabilidades fixas do shoe restante nas compras futuras. Monte Carlo curto
+nao participa da escolha do melhor EV publico.
+
+O agregador publico aplica essa politica mesmo se um modo experimental for
+solicitado. Modos Monte Carlo/legacy permanecem restritos a avaliacao interna
+por estado e nao controlam o edge retornado pela Machine EV publica.
+
+Enquanto nao houver EV deterministico robusto de split, `split` fica fora do
+`best_ev` publico. A exclusao e registrada apenas em warnings/debug internos
+como `split_ev_not_used_in_public_edge`.
+
 O EV final e calculado por media ponderada:
 
 ```text
@@ -78,6 +91,10 @@ Metricas internas:
 
 O cache e local por chamada. `max_duration_ms` e observacional: pode marcar
 `timed_out`, mas nao interrompe o calculo.
+
+Os caminhos `--smoke` de benchmark e audit usam um cenario curto. Validacoes
+full-shoe de 6/8 decks ficam em scripts/benchmarks explicitos ou testes `slow`,
+fora do `pytest` padrao.
 
 ## 7. Endpoint dedicado
 
@@ -114,6 +131,8 @@ Debug metrics nao sao exibidas na UI.
 ## 9. Limitacoes
 
 - diagnostico de risco depende da variancia fallback atual;
+- EV de `hit` usa aproximacao deterministica por composicao;
+- EV de `split` nao participa do edge publico nesta etapa;
 - valores dependem da engine, regras e snapshot analisado;
 - nao e prova de lucratividade;
 - nao recomenda valor real de aposta.

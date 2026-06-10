@@ -188,7 +188,7 @@ SCENARIOS: tuple[ComparisonScenario, ...] = (
     ),
 )
 
-SMOKE_SCENARIO_IDS = ("neutral_6_decks", "ten_rich_ace_poor")
+SMOKE_SCENARIO_IDS = ("late_shoe_composition",)
 
 
 def classify_machine_ev_count_alignment(
@@ -479,7 +479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--smoke",
         action="store_true",
-        help="Run two representative scenarios instead of the full benchmark.",
+        help="Run one short late-shoe scenario instead of the full benchmark.",
     )
     parser.add_argument(
         "--write-output",

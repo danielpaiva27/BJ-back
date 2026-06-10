@@ -41,6 +41,12 @@ composicao real.
 5. Gera diagnostico de risco para aposta minima (quando bankroll/minimo estao
    presentes).
 
+No edge publico, a selecao usa apenas resultados deterministas: `stand`,
+`double`, `surrender` e uma aproximacao deterministica por composicao para
+`hit`. Monte Carlo curto nao escolhe o melhor EV. `split` fica excluido ate
+existir uma avaliacao deterministica robusta. Modos experimentais solicitados
+na configuracao nao substituem essa politica no agregador publico.
+
 ## 5. Endpoint e contrato de produto
 
 Endpoint dedicado:
@@ -73,7 +79,8 @@ A UI nao exibe `suggested_units`, `suggested_amount` nem metricas de debug.
 - Enumeracao exata dos estados iniciais observaveis (sem sampling).
 - Cache local por chamada para evitar reavaliacao de estados repetidos.
 - `duration_ms` e `timed_out` sao metricas internas de observabilidade/debug.
-- `timed_out` nao interrompe o calculo exato nesta etapa.
+- `timed_out` nao interrompe a enumeracao completa nesta etapa.
+- Smokes usam cenario curto; full-shoe 6/8 e validacao explicita.
 
 ## 8. Benchmark e accuracy audit
 
@@ -96,6 +103,8 @@ Leitura recomendada:
 ## 9. Limitacoes conhecidas
 
 - O diagnostico de risco ainda usa variancia fallback configurada.
+- O EV de `hit` usa aproximacao deterministica por composicao.
+- `split` nao participa do edge publico nesta etapa.
 - A feature nao prova lucratividade e nao elimina variancia de curto prazo.
 - A feature nao recomenda valor real de aposta.
 - Os valores dependem da engine atual, das regras e do snapshot analisado.

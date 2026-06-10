@@ -46,6 +46,8 @@ AUDITED_SCENARIO_IDS = (
     "surrender_allowed",
     "small_bankroll_high_minimum",
 )
+NEUTRAL_EDGE_MIN = -0.02
+NEUTRAL_EDGE_MAX = 0.001
 
 
 def _load_script(module_name: str, path: Path) -> ModuleType:
@@ -124,6 +126,7 @@ def _all_keys(value: object):
             yield from _all_keys(nested)
 
 
+@pytest.mark.slow
 def test_all_controlled_scenarios_satisfy_numeric_invariants(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -149,15 +152,41 @@ def test_all_controlled_scenarios_satisfy_numeric_invariants(
             assert required_bankroll > 0
 
 
+@pytest.mark.slow
 def test_neutral_six_deck_result_is_finite_and_plausible(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
     edge = _edge(audited_results["neutral_6_decks"])
 
     assert math.isfinite(edge)
-    assert -0.20 <= edge <= 0.20
+    assert NEUTRAL_EDGE_MIN <= edge <= NEUTRAL_EDGE_MAX
 
 
+def test_accuracy_audit_rejects_positive_neutral_standard_edge(
+    audit_script: ModuleType,
+) -> None:
+    result = {
+        "scenario_id": "neutral_6_decks",
+        "counting_systems": {},
+        "machine_ev": {
+            "model_id": "machine_ev",
+            "is_human_replicable": False,
+            "estimated_next_hand_edge": 0.0039,
+            "duration_ms": 1.0,
+            "states_evaluated": 550,
+            "risk_if_minimum_bet": None,
+            "minimum_bankroll_required_for_minimum_bet": None,
+            "recommendation_status": "machine_ev_missing_wager_inputs",
+        },
+    }
+
+    audit = audit_script.audit_scenario(result)
+
+    assert audit["passed"] is False
+    assert audit["checks"]["neutral_standard_edge_sane"] is False
+
+
+@pytest.mark.slow
 def test_favorable_and_unfavorable_compositions_have_expected_direction(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -167,6 +196,7 @@ def test_favorable_and_unfavorable_compositions_have_expected_direction(
     assert low_cards_removed > high_cards_removed
 
 
+@pytest.mark.slow
 def test_blackjack_six_to_five_does_not_improve_player_ev(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -176,6 +206,7 @@ def test_blackjack_six_to_five_does_not_improve_player_ev(
     assert six_to_five <= three_to_two + 1e-9
 
 
+@pytest.mark.slow
 def test_h17_does_not_improve_player_ev_over_s17(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -185,6 +216,7 @@ def test_h17_does_not_improve_player_ev_over_s17(
     assert h17 <= s17 + 1e-9
 
 
+@pytest.mark.slow
 def test_surrender_does_not_reduce_player_ev(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -194,6 +226,7 @@ def test_surrender_does_not_reduce_player_ev(
     assert with_surrender + 1e-9 >= without_surrender
 
 
+@pytest.mark.slow
 def test_late_shoe_remains_finite_and_valid(
     comparator: ModuleType,
     audited_results: dict[str, dict[str, object]],
@@ -213,6 +246,7 @@ def test_late_shoe_remains_finite_and_valid(
     assert math.isfinite(_edge(audited_results[scenario.scenario_id]))
 
 
+@pytest.mark.slow
 def test_small_bankroll_high_minimum_reports_high_risk_without_bet_suggestion(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -224,6 +258,7 @@ def test_small_bankroll_high_minimum_reports_high_risk_without_bet_suggestion(
     assert "suggested_amount" not in machine
 
 
+@pytest.mark.slow
 def test_non_positive_edge_has_no_finite_required_bankroll(
     audited_results: dict[str, dict[str, object]],
 ) -> None:
@@ -235,6 +270,7 @@ def test_non_positive_edge_has_no_finite_required_bankroll(
     assert machine["recommendation_status"] == "machine_ev_non_positive_edge"
 
 
+@pytest.mark.slow
 def test_missing_bankroll_still_calculates_edge_and_required_bankroll(
     missing_wager_result: MachineEvResult,
 ) -> None:
@@ -250,6 +286,7 @@ def test_missing_bankroll_still_calculates_edge_and_required_bankroll(
     )
 
 
+@pytest.mark.slow
 def test_same_input_and_config_are_deterministic(
     comparator: ModuleType,
     audited_results: dict[str, dict[str, object]],
@@ -292,6 +329,7 @@ def test_same_input_and_config_are_deterministic(
     )
 
 
+@pytest.mark.slow
 def test_benchmark_run_does_not_mutate_scenario_inputs(
     comparator: ModuleType,
     audited_results: dict[str, dict[str, object]],
@@ -380,6 +418,7 @@ def test_adapter_propagates_rules_engine_mode_and_exact_shoe(
     assert evaluation.state_ev == 0.25
 
 
+@pytest.mark.slow
 def test_models_expose_no_hole_card_human_counts_or_bet_suggestions(
     missing_wager_result: MachineEvResult,
 ) -> None:
@@ -424,7 +463,7 @@ def test_accuracy_audit_cli_smoke_path(
         "risk_if_minimum_bet": None,
         "minimum_bankroll_required_for_minimum_bet": None,
         "recommendation_status": "machine_ev_missing_wager_inputs",
-        "checks": {"edge_finite": True},
+        "checks": {"edge_finite": True, "neutral_standard_edge_sane": True},
         "passed": True,
     }
     direction_audit = {

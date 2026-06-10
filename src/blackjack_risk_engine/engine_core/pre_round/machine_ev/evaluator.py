@@ -4,8 +4,9 @@ import random
 import time
 import zlib
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, is_dataclass, replace
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from enum import Enum
+from functools import cache
 from math import fsum, isfinite
 
 from blackjack_risk_engine.decisions import Decision, get_legal_actions
@@ -14,17 +15,29 @@ from blackjack_risk_engine.engine_core.adapters import (
     ranks_to_cards,
 )
 from blackjack_risk_engine.engine_core.action_ev import (
-    DeterministicEvCacheLimitExceeded,
     calculate_action_evs_deterministic,
+    ev_blackjack_stand,
+    ev_double,
+    ev_stand,
+    ev_surrender,
 )
 from blackjack_risk_engine.engine_core.cards import (
     RANK_STRINGS,
     deck_counts_for_decks,
     string_to_rank,
 )
+from blackjack_risk_engine.engine_core.dealer_dp import (
+    dealer_natural_blackjack_probability,
+    dealer_outcome_distribution,
+    stand_ev_from_distribution,
+)
 from blackjack_risk_engine.engine_core.engine_mode import (
     EngineMode,
     normalize_engine_mode,
+)
+from blackjack_risk_engine.engine_core.hand import (
+    add_card_to_total,
+    evaluate_hand_from_ranks,
 )
 from blackjack_risk_engine.engine_core.monte_carlo_analysis import (
     monte_carlo_analysis,
@@ -55,7 +68,25 @@ from blackjack_risk_engine.rules import GameRules
 
 
 MACHINE_EV_DECISION_SIMULATIONS = 100
-MACHINE_EV_DETERMINISTIC_CACHE_STATES = 1
+_PUBLIC_MACHINE_EV_ACTIONS = frozenset({"stand", "hit", "double", "surrender"})
+_HIT_APPROXIMATION_WARNING = (
+    "hit_ev_uses_deterministic_composition_approximation: "
+    "future player draws use fixed remaining-shoe probabilities."
+)
+_SPLIT_EXCLUDED_WARNING = (
+    "split_ev_not_used_in_public_edge: split is excluded because "
+    "no robust deterministic split EV is available."
+)
+_PUBLIC_MODE_OVERRIDE_WARNING = (
+    "public_machine_ev_uses_deterministic_action_policy: "
+    "the requested experimental engine mode was not used for public edge."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _ActionEvComputation:
+    action_evs: tuple[tuple[str, float], ...]
+    excluded_actions: tuple[str, ...] = ()
 
 _DIAGNOSTIC_TEXT = {
     "not_evaluated": "A Machine EV ainda não foi calculada.",
@@ -300,20 +331,33 @@ def evaluate_initial_state_with_decision_engine(
     player = Hand(ranks_to_cards(player_ranks))
     legal_actions = get_legal_actions(player, active_rules)
     seed = _stable_state_seed(state)
-    action_evs = _evaluate_action_evs(
+    action_evs_result = _evaluate_action_evs(
         mode=mode,
         state=core_state,
         active_rules=active_rules,
         legal_actions=legal_actions,
         seed=seed,
     )
-    if not action_evs:
+    normalized_action_evs = _normalize_action_evs_result(
+        action_evs_result,
+        mode=mode,
+        legal_actions=legal_actions,
+    )
+    if not normalized_action_evs.action_evs:
         raise ValueError("decision engine returned no evaluable actions")
 
     ranked_action_evs = tuple(
-        sorted(action_evs, key=lambda item: item[1], reverse=True)
+        sorted(
+            normalized_action_evs.action_evs,
+            key=lambda item: item[1],
+            reverse=True,
+        )
     )
     best_action, best_ev = ranked_action_evs[0]
+    warning = _machine_ev_action_warning(
+        mode=mode,
+        excluded_actions=normalized_action_evs.excluded_actions,
+    )
     return MachineEvStateEvaluation(
         player_cards=state.player_cards,
         dealer_upcard=state.dealer_upcard,
@@ -321,6 +365,7 @@ def evaluate_initial_state_with_decision_engine(
         best_action=best_action,
         state_ev=best_ev,
         action_evs=ranked_action_evs,
+        warning=warning,
     )
 
 
@@ -333,18 +378,26 @@ def evaluate_machine_ev_pre_round(
     if config is not None and not isinstance(config, MachineEvConfig):
         raise ValueError("config must be a MachineEvConfig or None")
 
-    active_config = config or MachineEvConfig()
-    if not active_config.enabled:
+    requested_config = config or MachineEvConfig()
+    if not requested_config.enabled:
         return MachineEvResult(
             metrics=MachineEvInternalMetrics(
                 warnings=("Machine EV evaluation is disabled by config.",),
             ),
-            config=active_config,
+            config=requested_config,
         )
 
     start_time = time.perf_counter()
     core_rules = _build_core_rules(machine_input)
-    engine_mode = normalize_engine_mode(active_config.decision_engine_mode)
+    requested_engine_mode = normalize_engine_mode(
+        requested_config.decision_engine_mode
+    )
+    engine_mode: EngineMode = "hybrid"
+    active_config = (
+        requested_config
+        if requested_engine_mode == engine_mode
+        else replace(requested_config, decision_engine_mode=engine_mode)
+    )
     rules_signature = make_machine_ev_rules_signature(core_rules)
     shoe_counts = build_machine_ev_shoe_counts(
         machine_input.number_of_decks,
@@ -353,7 +406,9 @@ def evaluate_machine_ev_pre_round(
 
     states = enumerate_observable_initial_states(shoe_counts, active_config)
     evaluations: list[MachineEvStateEvaluation] = []
-    warnings: list[str] = []
+    warnings = [_HIT_APPROXIMATION_WARNING]
+    if requested_engine_mode != engine_mode:
+        warnings.append(_PUBLIC_MODE_OVERRIDE_WARNING)
     evaluation_cache: dict[
         tuple[object, str, tuple[tuple[str, object], ...]],
         MachineEvStateEvaluation,
@@ -420,8 +475,9 @@ def evaluate_machine_ev_pre_round(
     if timed_out:
         warnings.append(
             "Machine EV exceeded configured duration budget; "
-            "result remains exact but may be slow."
+            "observable-state enumeration completed, but the result may be slow."
         )
+    warnings = list(dict.fromkeys(warnings))
 
     summary = MachineEvPublicSummary(
         estimated_next_hand_edge=machine_ev,
@@ -526,45 +582,44 @@ def _evaluate_action_evs(
     active_rules: GameRules,
     legal_actions: tuple[Decision, ...],
     seed: int,
-) -> tuple[tuple[str, float], ...]:
+) -> _ActionEvComputation:
     action_names = tuple(action.value for action in legal_actions)
     rng = random.Random(seed)
     action_seeds = {action.value: rng.randrange(2**32) for action in legal_actions}
 
     if mode == "deterministic":
         ranking = calculate_action_evs_deterministic(state, action_names)
-        return tuple((result.action, result.ev) for result in ranking.actions)
+        return _ActionEvComputation(
+            action_evs=tuple((result.action, result.ev) for result in ranking.actions),
+        )
 
     if mode == "hybrid":
-        results: list[tuple[str, float]] = []
-        for action in action_names:
-            try:
-                ranking = calculate_action_evs_deterministic(
-                    state,
-                    (action,),
-                    max_cache_states=MACHINE_EV_DETERMINISTIC_CACHE_STATES,
-                )
-            except DeterministicEvCacheLimitExceeded:
-                ranking = None
-
-            if ranking is not None and ranking.actions:
-                result = ranking.actions[0]
-                results.append((result.action, result.ev))
-            else:
-                results.extend(
-                    _evaluate_actions_monte_carlo(
-                        state,
-                        (action,),
-                        action_seeds,
-                    )
-                )
-        return tuple(results)
+        deterministic_candidates = tuple(
+            action
+            for action in action_names
+            if action in _PUBLIC_MACHINE_EV_ACTIONS
+        )
+        excluded_actions = tuple(
+            action
+            for action in action_names
+            if action not in _PUBLIC_MACHINE_EV_ACTIONS
+        )
+        results = _evaluate_public_deterministic_action_evs(
+            state,
+            deterministic_candidates,
+        )
+        return _ActionEvComputation(
+            action_evs=results,
+            excluded_actions=excluded_actions,
+        )
 
     if mode == "monte_carlo":
-        return _evaluate_actions_monte_carlo(
-            state,
-            action_names,
-            action_seeds,
+        return _ActionEvComputation(
+            action_evs=_evaluate_actions_monte_carlo(
+                state,
+                action_names,
+                action_seeds,
+            ),
         )
 
     action_seed_by_decision = {
@@ -583,10 +638,180 @@ def _evaluate_action_evs(
         action_seeds=action_seed_by_decision,
         monte_carlo_config=None,
     )
-    return tuple(
+    action_evs = tuple(
         (analysis.action.value, analysis.expected_value)
         for analysis in mode_result.analyses
     )
+    return _ActionEvComputation(
+        action_evs=action_evs,
+    )
+
+
+def _normalize_action_evs_result(
+    action_evs_result: _ActionEvComputation | tuple[tuple[str, float], ...],
+    *,
+    mode: EngineMode,
+    legal_actions: tuple[Decision, ...],
+) -> _ActionEvComputation:
+    if isinstance(action_evs_result, _ActionEvComputation):
+        return action_evs_result
+
+    action_evs = tuple(action_evs_result)
+    action_names_present = {action for action, _ in action_evs}
+    legal_action_names = tuple(action.value for action in legal_actions)
+    if mode != "hybrid":
+        return _ActionEvComputation(action_evs=action_evs)
+
+    public_action_evs = tuple(
+        item
+        for item in action_evs
+        if item[0] in _PUBLIC_MACHINE_EV_ACTIONS
+    )
+    public_action_names = {action for action, _ in public_action_evs}
+    excluded_actions = tuple(
+        action
+        for action in legal_action_names
+        if action in action_names_present and action not in public_action_names
+    )
+    return _ActionEvComputation(
+        action_evs=public_action_evs,
+        excluded_actions=excluded_actions,
+    )
+
+
+def _machine_ev_action_warning(
+    *,
+    mode: EngineMode,
+    excluded_actions: tuple[str, ...],
+) -> str | None:
+    if mode != "hybrid":
+        return None
+
+    if "split" in excluded_actions:
+        return _SPLIT_EXCLUDED_WARNING
+    return None
+
+
+def _evaluate_public_deterministic_action_evs(
+    state: CoreGameState,
+    actions: tuple[str, ...],
+) -> tuple[tuple[str, float], ...]:
+    player = evaluate_hand_from_ranks(state.player_ranks)
+    results: list[tuple[str, float]] = []
+
+    for action in actions:
+        if action == "stand":
+            stats = (
+                ev_blackjack_stand(
+                    state.dealer_upcard_rank,
+                    state.deck_counts,
+                    state.rules,
+                )
+                if player.is_blackjack
+                else ev_stand(
+                    player.total,
+                    state.dealer_upcard_rank,
+                    state.deck_counts,
+                    state.rules,
+                )
+            )
+            results.append((action, stats.expected_value))
+        elif action == "hit":
+            results.append(
+                (
+                    action,
+                    _deterministic_composition_hit_ev(
+                        player_total=player.total,
+                        player_soft_aces=player.soft_aces,
+                        dealer_upcard_rank=state.dealer_upcard_rank,
+                        deck_counts=state.deck_counts,
+                        rules=state.rules,
+                    ),
+                )
+            )
+        elif action == "double":
+            results.append(
+                (
+                    action,
+                    ev_double(
+                        player.total,
+                        player.soft_aces,
+                        state.dealer_upcard_rank,
+                        state.deck_counts,
+                        state.rules,
+                    ).expected_value,
+                )
+            )
+        elif action == "surrender":
+            results.append((action, ev_surrender(state.rules).expected_value))
+
+    return tuple(results)
+
+
+def _deterministic_composition_hit_ev(
+    *,
+    player_total: int,
+    player_soft_aces: int,
+    dealer_upcard_rank: int,
+    deck_counts: tuple[int, ...],
+    rules: CoreRules,
+) -> float:
+    remaining_cards = sum(deck_counts)
+    if remaining_cards <= 0:
+        raise ValueError("deck_counts must contain at least one card for hit")
+
+    dealer_distribution = dealer_outcome_distribution(
+        dealer_upcard_rank=dealer_upcard_rank,
+        deck_counts=deck_counts,
+        dealer_hits_soft_17=rules.dealer_hits_soft_17,
+    )
+    dealer_natural_probability = dealer_natural_blackjack_probability(
+        dealer_upcard_rank,
+        deck_counts,
+    )
+    draw_probabilities = tuple(
+        count / remaining_cards
+        for count in deck_counts
+    )
+
+    @cache
+    def stand_value(total: int) -> float:
+        stand = stand_ev_from_distribution(total, dealer_distribution)
+        if total == 21:
+            natural_push = min(
+                stand.push_rate,
+                dealer_natural_probability,
+            )
+            return stand.expected_value - natural_push
+        return stand.expected_value
+
+    @cache
+    def best_hit_or_stand(total: int, soft_aces: int) -> float:
+        return max(
+            stand_value(total),
+            hit_value(total, soft_aces),
+        )
+
+    @cache
+    def hit_value(total: int, soft_aces: int) -> float:
+        expected_value = 0.0
+        for rank, probability in enumerate(draw_probabilities):
+            if probability <= 0:
+                continue
+            next_total, next_soft_aces = add_card_to_total(
+                total,
+                soft_aces,
+                rank,
+            )
+            branch_value = (
+                -1.0
+                if next_total > 21
+                else best_hit_or_stand(next_total, next_soft_aces)
+            )
+            expected_value += probability * branch_value
+        return expected_value
+
+    return hit_value(player_total, player_soft_aces)
 
 
 def _evaluate_actions_monte_carlo(

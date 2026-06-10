@@ -45,6 +45,9 @@ Os testes verificam, entre outros pontos:
     summary Machine EV;
 11. repetibilidade para input/config iguais;
 12. nao mutacao do snapshot de entrada.
+13. edge neutro positivo relevante tratado como regressao;
+14. split aproximado sem participacao no `best_ev` publico;
+15. caminho hybrid publico sem fallback Monte Carlo curto.
 
 ## Cenarios auditados
 
@@ -88,7 +91,10 @@ jogador. A dealer hole card permanece fora do estado observavel.
 
 ## Limitacoes
 
-- O modo `hybrid` pode usar fallback Monte Carlo em partes da avaliacao.
+- O modo publico `hybrid` usa aproximacao deterministica por composicao para
+  continuacoes de `hit`.
+- `split` e excluido do edge publico enquanto nao houver EV deterministico
+  robusto.
 - A variancia do diagnostico de risco ainda e fallback configurado.
 - A cobertura de cenarios e representativa, nao exaustiva.
 - Magnitude de efeitos pode variar com outras composicoes/regras.
@@ -100,3 +106,9 @@ jogador. A dealer hole card permanece fora do estado observavel.
 - aprofundar auditoria de distribuicao de EV por estado;
 - revisar modelo de variancia do diagnostico de risco;
 - acompanhar regressao de performance junto da precisao.
+
+## Execucao
+
+- `benchmarks/audit_machine_ev_accuracy.py --smoke`: smoke curto.
+- `benchmarks/audit_machine_ev_accuracy.py`: audit full-shoe explicito.
+- `pytest -m slow`: validacoes full-shoe fora da suite padrao.

@@ -22,6 +22,16 @@ from blackjack_risk_engine.engine_core.rules import CoreRules
 import blackjack_risk_engine.engine_core.pre_round.machine_ev.evaluator as evaluator_module
 
 
+STANDARD_RULES = {
+    "blackjack_payout": "3:2",
+    "dealer_hits_soft_17": False,
+    "double_allowed": True,
+    "double_after_split": True,
+    "surrender_allowed": False,
+    "dealer_peek": True,
+}
+
+
 def _state(
     *,
     player_cards: tuple[str, str],
@@ -125,7 +135,7 @@ def test_duration_budget_exceeded_keeps_complete_result(
     assert result.raw_ev_per_unit == pytest.approx(0.05)
     assert (
         "Machine EV exceeded configured duration budget; "
-        "result remains exact but may be slow."
+        "observable-state enumeration completed, but the result may be slow."
     ) in result.metrics.warnings
 
 
@@ -277,7 +287,7 @@ def test_precision_mode_remains_exact_observable_enumeration() -> None:
     config = MachineEvConfig()
 
     assert config.precision_mode == (
-        "exact_observable_initial_states_with_hybrid_decision"
+        "exact_observable_initial_states_with_deterministic_public_actions"
     )
     assert "sampled" not in config.precision_mode
     assert "partial" not in config.precision_mode
@@ -616,11 +626,196 @@ def test_machine_ev_models_do_not_reveal_dealer_hole_card() -> None:
     assert "dealer_hole_card" not in evaluation_fields
 
 
-def test_neutral_six_deck_shoe_returns_plausible_finite_ev() -> None:
-    result = evaluate_machine_ev_pre_round(MachineEvInput(number_of_decks=6))
+def test_hybrid_state_ev_does_not_jump_above_deterministic_reference() -> None:
+    machine_input = MachineEvInput(
+        number_of_decks=6,
+        seen_cards=(),
+        rules=STANDARD_RULES,
+    )
+    neutral_states = evaluator_module.enumerate_observable_initial_states(
+        build_machine_ev_shoe_counts(6, ()),
+    )
+    reference_state = next(
+        state
+        for state in neutral_states
+        if state.player_cards == ("8", "8")
+        and state.dealer_upcard == "6"
+    )
 
-    assert math.isfinite(result.raw_ev_per_unit)
-    assert -0.20 <= result.raw_ev_per_unit <= 0.20
+    deterministic = evaluator_module.evaluate_initial_state_with_decision_engine(
+        reference_state,
+        machine_input,
+        MachineEvConfig(decision_engine_mode="deterministic"),
+    )
+    hybrid = evaluator_module.evaluate_initial_state_with_decision_engine(
+        reference_state,
+        machine_input,
+        MachineEvConfig(decision_engine_mode="hybrid"),
+    )
+
+    assert math.isfinite(deterministic.state_ev)
+    assert math.isfinite(hybrid.state_ev)
+    assert hybrid.state_ev <= deterministic.state_ev + 0.01
+    assert hybrid.best_action != "split"
+    assert "split_ev_not_used_in_public_edge" in (hybrid.warning or "")
+
+
+def test_hybrid_public_edge_never_calls_short_monte_carlo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    states = (
+        _state(player_cards=("8", "10"), dealer_upcard="6", probability=1.0),
+    )
+
+    monkeypatch.setattr(
+        evaluator_module,
+        "enumerate_observable_initial_states",
+        lambda shoe_counts, config: states,
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "_evaluate_public_deterministic_action_evs",
+        lambda state, actions: (
+            ("stand", -0.01),
+            ("hit", -0.02),
+            ("double", -0.04),
+        ),
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "monte_carlo_analysis",
+        lambda *args, **kwargs: pytest.fail(
+            "hybrid public Machine EV must not call Monte Carlo"
+        ),
+    )
+
+    result = evaluate_machine_ev_pre_round(
+        MachineEvInput(
+            number_of_decks=1,
+            bankroll=1000,
+            minimum_bet=10,
+        ),
+        MachineEvConfig(decision_engine_mode="hybrid"),
+    )
+
+    assert result.raw_ev_per_unit == pytest.approx(-0.01)
+    assert any(
+        "deterministic_composition_approximation" in warning
+        for warning in result.metrics.warnings
+    )
+
+
+@pytest.mark.parametrize("requested_mode", ["monte_carlo", "legacy", "deterministic"])
+def test_public_evaluator_forces_conservative_deterministic_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    requested_mode: str,
+) -> None:
+    states = (
+        _state(player_cards=("8", "10"), dealer_upcard="6", probability=1.0),
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "enumerate_observable_initial_states",
+        lambda shoe_counts, config: states,
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "_evaluate_public_deterministic_action_evs",
+        lambda state, actions: (
+            ("stand", -0.01),
+            ("hit", -0.02),
+            ("double", -0.04),
+        ),
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "monte_carlo_analysis",
+        lambda *args, **kwargs: pytest.fail(
+            "public Machine EV must not call Monte Carlo"
+        ),
+    )
+
+    result = evaluate_machine_ev_pre_round(
+        MachineEvInput(number_of_decks=1),
+        MachineEvConfig(decision_engine_mode=requested_mode),
+    )
+
+    assert result.raw_ev_per_unit == pytest.approx(-0.01)
+    assert result.config is not None
+    assert result.config.decision_engine_mode == "hybrid"
+    assert any(
+        "requested experimental engine mode was not used" in warning
+        for warning in result.metrics.warnings
+    )
+
+
+def test_noisy_split_candidate_is_excluded_from_public_best_ev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = next(
+        item
+        for item in evaluator_module.enumerate_observable_initial_states(
+            build_machine_ev_shoe_counts(1, ()),
+        )
+        if item.player_cards == ("8", "8")
+        and item.dealer_upcard == "6"
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "_evaluate_action_evs",
+        lambda **kwargs: (
+            ("split", 0.75),
+            ("stand", -0.10),
+            ("hit", -0.20),
+            ("double", -0.40),
+        ),
+    )
+
+    evaluation = evaluator_module.evaluate_initial_state_with_decision_engine(
+        state,
+        MachineEvInput(number_of_decks=1),
+        MachineEvConfig(decision_engine_mode="hybrid"),
+    )
+
+    assert evaluation.best_action == "stand"
+    assert evaluation.state_ev == pytest.approx(-0.10)
+    assert dict(evaluation.action_evs).get("split") is None
+    assert "split_ev_not_used_in_public_edge" in (evaluation.warning or "")
+
+
+def test_controlled_neutral_regression_does_not_publish_positive_edge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    states = (
+        _state(player_cards=("8", "10"), dealer_upcard="6", probability=0.5),
+        _state(player_cards=("9", "9"), dealer_upcard="10", probability=0.5),
+    )
+    state_evs = {
+        states[0].canonical_key: -0.004,
+        states[1].canonical_key: -0.006,
+    }
+    monkeypatch.setattr(
+        evaluator_module,
+        "enumerate_observable_initial_states",
+        lambda shoe_counts, config: states,
+    )
+    monkeypatch.setattr(
+        evaluator_module,
+        "evaluate_initial_state_with_decision_engine",
+        lambda state, machine_input, config: MachineEvStateEvaluation(
+            player_cards=state.player_cards,
+            dealer_upcard=state.dealer_upcard,
+            probability=state.probability,
+            best_action="stand",
+            state_ev=state_evs[state.canonical_key],
+            action_evs=(("stand", state_evs[state.canonical_key]),),
+        ),
+    )
+
+    result = evaluate_machine_ev_pre_round(MachineEvInput(number_of_decks=1))
+
+    assert result.raw_ev_per_unit == pytest.approx(-0.005)
+    assert result.raw_ev_per_unit <= 0.001
 
 
 def test_rich_and_poor_shoes_return_finite_values() -> None:

@@ -32,10 +32,11 @@ AUDIT_SCENARIO_IDS = (
     "small_bankroll_high_minimum",
 )
 SMOKE_SCENARIO_IDS = (
-    "neutral_6_decks",
-    "low_cards_removed",
-    "high_cards_removed",
+    "late_shoe_composition",
 )
+NEUTRAL_STANDARD_SCENARIO_IDS = {"neutral_6_decks"}
+NEUTRAL_EDGE_MIN = -0.02
+NEUTRAL_EDGE_MAX = 0.001
 
 
 def audit_scenario(result: BenchmarkResult) -> dict[str, object]:
@@ -87,6 +88,10 @@ def audit_scenario(result: BenchmarkResult) -> dict[str, object]:
             and "counting_systems" in result
         ),
     }
+    if result.get("scenario_id") in NEUTRAL_STANDARD_SCENARIO_IDS:
+        checks["neutral_standard_edge_sane"] = (
+            NEUTRAL_EDGE_MIN <= edge <= NEUTRAL_EDGE_MAX
+        )
     return {
         "scenario_id": result["scenario_id"],
         "edge": edge,
@@ -153,7 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--smoke",
         action="store_true",
-        help="Run neutral, favorable, and unfavorable composition checks.",
+        help="Run one short structural scenario instead of the full audit.",
     )
     args = parser.parse_args(argv)
 

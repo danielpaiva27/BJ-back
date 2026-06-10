@@ -14,7 +14,9 @@ class MachineEvConfig:
     include_state_breakdown: bool = False
     variance_per_unit_fallback: float = 1.3
     risk_of_ruin_limit: float = 0.05
-    precision_mode: str = "exact_observable_initial_states_with_hybrid_decision"
+    precision_mode: str = (
+        "exact_observable_initial_states_with_deterministic_public_actions"
+    )
 
     def __post_init__(self) -> None:
         if (
